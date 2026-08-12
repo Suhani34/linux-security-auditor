@@ -6,6 +6,7 @@ echo "======================================================================"
 
 HOST="$(hostname)"
 CURRENT_USER="$(whoami)"
+INVOKING_USER="${SUDO_USER:-$CURRENT_USER}"
 KERNEL="$(uname -r)"
 ARCHITECTURE="$(uname -m)"
 UPTIME="$(uptime -p)"
@@ -23,7 +24,8 @@ echo "Kernel           : $KERNEL"
 echo "Architecture     : $ARCHITECTURE"
 echo "Uptime           : $UPTIME"
 echo "Audit Time       : $AUDIT_TIME"
-echo "Run By           : $CURRENT_USER"
+echo "Run By           : $INVOKING_USER"
+echo "Effective As     : $CURRENT_USER"
 echo
 echo "[USER & ACCOUNT SECURITY]"
 UID_MIN="$(awk '/^[[:space:]]*UID_MIN[[:space:]]+/ {print $2; exit}' /etc/login.defs)"
@@ -149,4 +151,92 @@ then
 else
     echo "[WARNING] $MISSING_HOME_COUNT human user(s) have missing home directories"
     printf '%s' "$MISSING_HOME_USERS"
+fi
+
+echo
+echo "[SUDO & PRIVILEGE SECURITY]"
+
+if command -v sudo >/dev/null 2>&1
+then
+	SUDO_GROUP_MEMBERS="$(
+		getent group sudo |
+		awk -F: '{print $4}'
+	)"
+
+	if [[ -z "$SUDO_GROUP_MEMBERS" ]]
+	then
+		SUDO_USER_COUNT=0
+
+		echo
+		echo "Sudo group members : 0"
+		echo "[INFO] No explicit users are listed in the sudo group"
+	else
+		SUDO_USER_COUNT="$(
+			printf '%s\n' "$SUDO_GROUP_MEMBERS" |
+			tr ',' '\n' |
+			sed '/^$/d' |
+			wc -l
+		)"
+
+		echo
+		echo "Sudo group members : $SUDO_USER_COUNT"
+
+		printf '%s\n' "$SUDO_GROUP_MEMBERS" |
+		tr ',' '\n' |
+		sed '/^$/d' |
+		while IFS= read -r sudo_user
+		do
+			echo " - $sudo_user"
+		done
+fi
+
+if id -nG "$INVOKING_USER" | grep -qw sudo
+then
+	echo "[INFO] Current user '$INVOKING_USER' is a member of the sudo group"
+else
+	echo "[INFO] Current user '$INVOKING_USER' is not a member of the sudo group"
+fi
+
+if [[ "$EUID" -eq 0 ]]
+then
+	if visudo -c >/dev/null 2>&1
+	then
+		echo "[PASS] sudoers configuration syntax is valid"
+	else
+		echo "[CRITICAL] sudoers configuration contains syntax errors"
+	fi
+
+	NOPASSWD_RULES="$(
+		grep  -RhsE \
+		'^[[:space:]]*[^#].*NOPASSWD:' \
+		/etc/sudoers /etc/sudoers.d \
+		2>/dev/null
+	)"
+	
+	if [[ -z "$NOPASSWD_RULES" ]]
+	then
+		echo "[PASS] No passwordless sudo rules detected"
+	else
+		echo "[WARNING] Passwordless sudo rule(s) detected"
+
+		printf '%s\n' "$NOPASSWD_RULES" |
+		while IFS= read -r rule
+		do
+			echo "  - $rule"
+		done
+	
+		if printf '$s\n' "$NOPASSWD_RULES" |
+			grep -Eq 'NOPASSWD:[[:spcae:]]*ALL([[:apce:]]*($|#)|[[:spcae:]]*,)'
+		then
+			echo "[CRITICAL] Unrestricted NOPASSWD: All rule detected"
+		fi
+	fi
+else
+	echo "[INFO] Full sudoers inspection skipped because the auditor is not running as root"
+	echo "[INFO] Run with sudo for the complete privilege audit"
+fi
+else
+
+	echo 
+	echo "[INFO] sudo is not installed on this system"
 fi
