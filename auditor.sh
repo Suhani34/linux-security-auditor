@@ -593,3 +593,176 @@ else
     echo "[WARNING] The ps command is not available"
 
 fi
+
+
+echo
+echo "[FIREWALL SECURITY]"
+
+if command -v ufw >/dev/null 2>&1
+then
+	echo
+	echo "Firewall tool : UFW"
+
+	if [[ "$EUID" -eq 0 ]]
+	then
+		UFW_VERBOSE="$(
+			ufw status verbose 2>/dev/null
+		)"
+		UFW_NUMBERED="$(
+			ufw status numbered 2>/dev/null
+		)"
+
+		if printf '%s\n' "$UFW_VERBOSE" | grep -q '^Status: active'
+		then
+			echo "Status        : ACTIVE"
+			echo 
+			echo "[PASS] UFW firewall is active"
+
+			DEFAULT_LINE="$(
+				printf '%s\n' "$UFW_VERBOSE" |
+				grep '^Default:' |
+				head -n 1
+			)"
+
+			if printf '%s\n' "$DEFAULT_LINE" |
+			  grep -q 'deny (incoming)'
+			then
+				INCOMING_POLICY="deny"
+			elif printf '%s\n' "DEFAULT_LINE" |
+			  grep -q 'reject (incoming)'
+			then
+				INCOMING_POLICY="reject"
+			elif printf '%s\n' "DEFAULT_LINE" |
+                          grep -q 'allow (incoming)'
+                        then
+                                INCOMING_POLICY="allow"
+			else
+				INCOMING_POLICY="unknown"
+			fi
+
+			if printf '%s\n' "$DEFAULT_LINE" |
+               		  grep -q 'allow (outgoing)'
+            		then
+                		OUTGOING_POLICY="allow"
+            		elif printf '%s\n' "$DEFAULT_LINE" |
+                 	  grep -q 'deny (outgoing)'
+            		then
+                		OUTGOING_POLICY="deny"
+            		elif printf '%s\n' "$DEFAULT_LINE" |
+                 	  grep -q 'reject (outgoing)'
+            		then
+                		OUTGOING_POLICY="reject"
+            		else
+                		OUTGOING_POLICY="unknown"
+            		fi
+
+            		echo
+            		echo "Default incoming policy : $INCOMING_POLICY"
+            		echo "Default outgoing policy : $OUTGOING_POLICY"
+
+			case "$INCOMING_POLICY" in
+
+                		deny|reject)
+                    			echo "[PASS] Default incoming traffic is blocked"
+                    			;;
+
+                		allow)
+                    			echo "[WARNING] Default incoming traffic is allowed"
+                    			;;
+
+                		*)
+                    			echo "[WARNING] Unable to determine default incoming policy"
+                    			;;
+
+            		esac
+
+			if printf '%s\n' "$UFW_VERBOSE" |
+               		  grep -Eq '^Logging: on'
+            		then
+                		echo "[INFO] UFW logging is enabled"
+            		else
+                		echo "[INFO] UFW logging is disabled"
+            		fi
+
+            		echo
+            		echo "Configured rules:"
+
+            		UFW_RULES="$(
+                		printf '%s\n' "$UFW_NUMBERED" |
+                		sed -n '/^\[[[:space:]]*[0-9]/p'
+            		)"
+
+            		if [[ -z "$UFW_RULES" ]]
+            		then
+                		echo "  No explicit UFW rules configured"
+            		else
+                		printf '%s\n' "$UFW_RULES" |
+                		while IFS= read -r rule
+                		do
+                    			echo "  $rule"
+                		done
+            		fi
+			echo
+
+			if printf '%s\n' "$UFW_RULES" |
+               		  grep -Eq '22(/tcp)?[[:space:]]+.*ALLOW'
+            		then
+                		echo "[INFO] SSH port 22 is explicitly allowed by UFW"
+            		else
+                		echo "[INFO] SSH port 22 is not explicitly allowed by UFW"
+            		fi
+
+			if printf '%s\n' "$UFW_RULES" |
+               		  grep -Eq '23(/tcp)?[[:space:]]+.*ALLOW'
+            		then
+                		echo "[WARNING] Telnet-associated TCP port 23 is explicitly allowed"
+            		else
+                		echo "[PASS] Telnet-associated port 23 is not explicitly allowed"
+            		fi
+
+			DATABASE_FIREWALL_WARNING=0
+
+            		for database_port in 3306 5432 6379 27017
+            		do
+
+                		if printf '%s\n' "$UFW_RULES" |
+                   		  grep -E "$database_port(/tcp)?[[:space:]]+.*ALLOW" |
+                   		  grep -Eq 'Anywhere'
+                		then
+
+                    			echo "[WARNING] Data-service port $database_port is allowed from Anywhere"
+                    			DATABASE_FIREWALL_WARNING=$((DATABASE_FIREWALL_WARNING + 1))
+
+                		fi
+
+            		done
+
+            		if [[ "$DATABASE_FIREWALL_WARNING" -eq 0 ]]
+            		then
+                		echo "[PASS] No monitored database/data-service ports are broadly allowed by UFW"
+            		fi
+
+		else
+
+            		echo "Status        : INACTIVE"
+            		echo
+            		echo "[CRITICAL] UFW firewall is disabled"
+
+        	fi
+
+	else
+
+        	echo "Status        : Requires elevated privileges"
+        	echo
+        	echo "[INFO] Full firewall inspection skipped because the auditor is not running as root"
+        	echo "[INFO] Run with sudo for the complete firewall audit"
+
+    	fi
+
+else
+
+    echo
+    echo "[WARNING] UFW is not installed"
+    echo "[INFO] UFW firewall checks could not be performed"
+
+fi
