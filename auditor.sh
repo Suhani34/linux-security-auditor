@@ -1130,3 +1130,229 @@ else
     echo "[INFO] Authentication log analysis could not be performed"
 
 fi
+
+
+echo
+echo "[FILE PERMISSION SECURITY]"
+
+echo
+
+report_file_metadata() {
+    local target_file="$1"
+
+    if [[ -e "$target_file" ]]
+    then
+        stat -c '  %n -> mode=%a owner=%U group=%G permissions=%A' \
+            "$target_file" 2>/dev/null
+    else
+        echo "  $target_file -> not found"
+    fi
+}
+
+echo "Critical file metadata:"
+
+report_file_metadata "/etc/passwd"
+report_file_metadata "/etc/shadow"
+report_file_metadata "/etc/sudoers"
+report_file_metadata "/etc/ssh/sshd_config"
+
+echo
+
+if [[ -e /etc/passwd ]]
+then
+
+    if find /etc/passwd -perm -0002 -print 2>/dev/null |
+       grep -q .
+    then
+        echo "[CRITICAL] /etc/passwd is world-writable"
+    else
+        echo "[PASS] /etc/passwd is not world-writable"
+    fi
+
+    PASSWD_OWNER="$(stat -c '%U' /etc/passwd 2>/dev/null)"
+
+    if [[ "$PASSWD_OWNER" == "root" ]]
+    then
+        echo "[PASS] /etc/passwd is owned by root"
+    else
+        echo "[CRITICAL] /etc/passwd is not owned by root"
+    fi
+
+fi
+
+if [[ -e /etc/shadow ]]
+then
+
+    SHADOW_OWNER="$(stat -c '%U' /etc/shadow 2>/dev/null)"
+
+    if [[ "$SHADOW_OWNER" == "root" ]]
+    then
+        echo "[PASS] /etc/shadow is owned by root"
+    else
+        echo "[CRITICAL] /etc/shadow is not owned by root"
+    fi
+
+    if find /etc/shadow -perm -0004 -print 2>/dev/null |
+       grep -q .
+    then
+        echo "[CRITICAL] /etc/shadow is readable by other users"
+    else
+        echo "[PASS] /etc/shadow is not readable by other users"
+    fi
+
+    if find /etc/shadow -perm -0002 -print 2>/dev/null |
+       grep -q .
+    then
+        echo "[CRITICAL] /etc/shadow is world-writable"
+    else
+        echo "[PASS] /etc/shadow is not world-writable"
+    fi
+
+fi
+
+if [[ -e /etc/sudoers ]]
+then
+
+    SUDOERS_OWNER="$(stat -c '%U' /etc/sudoers 2>/dev/null)"
+
+    if [[ "$SUDOERS_OWNER" == "root" ]]
+    then
+        echo "[PASS] /etc/sudoers is owned by root"
+    else
+        echo "[CRITICAL] /etc/sudoers is not owned by root"
+    fi
+
+    if find /etc/sudoers \
+    	\( -perm -0020 -o -perm -0002 \) \
+    	-print 2>/dev/null |
+    	grep -q .
+    then
+        echo "[CRITICAL] /etc/sudoers is writable by group or others"
+    else
+        echo "[PASS] /etc/sudoers is not writable by group or others"
+    fi
+
+fi
+
+
+if [[ -e /etc/ssh/sshd_config ]]
+then
+
+    SSHD_CONFIG_OWNER="$(stat -c '%U' /etc/ssh/sshd_config 2>/dev/null)"
+
+    if [[ "$SSHD_CONFIG_OWNER" == "root" ]]
+    then
+        echo "[PASS] SSH server configuration is owned by root"
+    else
+        echo "[WARNING] SSH server configuration is not owned by root"
+    fi
+
+    if find /etc/ssh/sshd_config \
+    	\( -perm -0020 -o -perm -0002 \) \
+    	-print 2>/dev/null |
+    	grep -q .
+    then
+        echo "[CRITICAL] SSH server configuration is writable by group or others"
+    else
+        echo "[PASS] SSH server configuration is not writable by group or others"
+    fi
+
+fi
+
+
+echo
+
+if [[ "$EUID" -eq 0 ]]
+then
+
+    WORLD_WRITABLE_FILES="$(
+        find / \
+            -xdev \
+            -type f \
+            -perm -0002 \
+            -print \
+            2>/dev/null
+    )"
+
+    if [[ -z "$WORLD_WRITABLE_FILES" ]]
+    then
+        WORLD_WRITABLE_FILE_COUNT=0
+    else
+        WORLD_WRITABLE_FILE_COUNT="$(
+            printf '%s\n' "$WORLD_WRITABLE_FILES" |
+            sed '/^[[:space:]]*$/d' |
+            wc -l
+        )"
+    fi
+
+    echo "World-writable files     : $WORLD_WRITABLE_FILE_COUNT"
+
+    if [[ "$WORLD_WRITABLE_FILE_COUNT" -eq 0 ]]
+    then
+        echo "[PASS] No world-writable regular files detected"
+    else
+        echo "[WARNING] World-writable regular files detected"
+
+        printf '%s\n' "$WORLD_WRITABLE_FILES" |
+        head -n 10 |
+        while IFS= read -r writable_file
+        do
+            echo "  - $writable_file"
+        done
+
+        if [[ "$WORLD_WRITABLE_FILE_COUNT" -gt 10 ]]
+        then
+            echo "  ... additional findings omitted from console output"
+        fi
+    fi
+
+
+    WORLD_WRITABLE_DIRS_NO_STICKY="$(
+        find / \
+            -xdev \
+            -type d \
+            -perm -0002 \
+            ! -perm -1000 \
+            -print \
+            2>/dev/null
+    )"
+
+    if [[ -z "$WORLD_WRITABLE_DIRS_NO_STICKY" ]]
+    then
+        WORLD_WRITABLE_DIR_COUNT=0
+    else
+        WORLD_WRITABLE_DIR_COUNT="$(
+            printf '%s\n' "$WORLD_WRITABLE_DIRS_NO_STICKY" |
+            sed '/^[[:space:]]*$/d' |
+            wc -l
+        )"
+    fi
+
+    echo
+    echo "World-writable directories without sticky bit : $WORLD_WRITABLE_DIR_COUNT"
+
+    if [[ "$WORLD_WRITABLE_DIR_COUNT" -eq 0 ]]
+    then
+        echo "[PASS] No world-writable directories without sticky bit detected"
+    else
+        echo "[WARNING] World-writable directories without sticky bit detected"
+
+        printf '%s\n' "$WORLD_WRITABLE_DIRS_NO_STICKY" |
+        head -n 10 |
+        while IFS= read -r writable_dir
+        do
+            echo "  - $writable_dir"
+        done
+
+        if [[ "$WORLD_WRITABLE_DIR_COUNT" -gt 10 ]]
+        then
+            echo "  ... additional findings omitted from console output"
+        fi
+    fi
+
+else
+
+    echo "[INFO] System-wide writable-file scan skipped because the auditor is not running as root"
+    echo "[INFO] Run with sudo for the complete file-permission audit"
+
+fi
