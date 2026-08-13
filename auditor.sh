@@ -1356,3 +1356,189 @@ else
     echo "[INFO] Run with sudo for the complete file-permission audit"
 
 fi
+
+echo
+echo "[SUID & SGID SECURITY]"
+
+echo
+
+if [[ "$EUID" -eq 0 ]]
+then
+
+    SUID_FILES="$(
+        find / \
+            -xdev \
+            -type f \
+            -perm -4000 \
+            -print \
+            2>/dev/null
+    )"
+
+    SGID_FILES="$(
+        find / \
+            -xdev \
+            -type f \
+            -perm -2000 \
+            -print \
+            2>/dev/null
+    )"
+
+    if [[ -z "$SUID_FILES" ]]
+    then
+        SUID_FILE_COUNT=0
+    else
+        SUID_FILE_COUNT="$(
+            printf '%s\n' "$SUID_FILES" |
+            sed '/^[[:space:]]*$/d' |
+            wc -l
+        )"
+    fi
+
+    if [[ -z "$SGID_FILES" ]]
+    then
+        SGID_FILE_COUNT=0
+    else
+        SGID_FILE_COUNT="$(
+            printf '%s\n' "$SGID_FILES" |
+            sed '/^[[:space:]]*$/d' |
+            wc -l
+        )"
+    fi
+
+    echo "SUID files : $SUID_FILE_COUNT"
+    echo "SGID files : $SGID_FILE_COUNT"
+
+    if [[ "$SUID_FILE_COUNT" -gt 0 ]]
+    then
+
+        echo
+        echo "SUID files:"
+
+        printf '%s\n' "$SUID_FILES" |
+        head -n 15 |
+        while IFS= read -r suid_file
+        do
+            stat -c \
+                '  - %n | mode=%a | owner=%U | group=%G | %A' \
+                "$suid_file" \
+                2>/dev/null
+        done
+
+        if [[ "$SUID_FILE_COUNT" -gt 15 ]]
+        then
+            echo "  ... additional SUID files omitted from console output"
+        fi
+
+    fi
+
+    if [[ "$SGID_FILE_COUNT" -gt 0 ]]
+    then
+
+        echo
+        echo "SGID files:"
+
+        printf '%s\n' "$SGID_FILES" |
+        head -n 15 |
+        while IFS= read -r sgid_file
+        do
+            stat -c \
+                '  - %n | mode=%a | owner=%U | group=%G | %A' \
+                "$sgid_file" \
+                2>/dev/null
+        done
+
+        if [[ "$SGID_FILE_COUNT" -gt 15 ]]
+        then
+            echo "  ... additional SGID files omitted from console output"
+        fi
+     fi
+     echo
+
+    WRITABLE_PRIVILEGED_FILES="$(
+        find / \
+            -xdev \
+            -type f \
+            \( -perm -4000 -o -perm -2000 \) \
+            \( -perm -0020 -o -perm -0002 \) \
+            -print \
+            2>/dev/null
+    )"
+
+    if [[ -z "$WRITABLE_PRIVILEGED_FILES" ]]
+    then
+        echo "[PASS] No SUID/SGID files are writable by group or others"
+    else
+
+        echo "[CRITICAL] SUID/SGID file(s) writable by group or others detected"
+
+        printf '%s\n' "$WRITABLE_PRIVILEGED_FILES" |
+        while IFS= read -r privileged_file
+        do
+            stat -c \
+                '  - %n | mode=%a | owner=%U | group=%G | %A' \
+                "$privileged_file" \
+                2>/dev/null
+        done
+
+    fi
+
+    UNUSUAL_PRIVILEGED_FILES="$(
+        find /home /tmp /var/tmp \
+            -xdev \
+            -type f \
+            \( -perm -4000 -o -perm -2000 \) \
+            -print \
+            2>/dev/null
+    )"
+
+    if [[ -z "$UNUSUAL_PRIVILEGED_FILES" ]]
+    then
+        echo "[PASS] No SUID/SGID files detected in common user or temporary directories"
+    else
+
+        echo "[WARNING] SUID/SGID files detected in user or temporary directories"
+
+        printf '%s\n' "$UNUSUAL_PRIVILEGED_FILES" |
+        while IFS= read -r unusual_file
+        do
+            stat -c \
+                '  - %n | mode=%a | owner=%U | group=%G | %A' \
+                "$unusual_file" \
+                2>/dev/null
+        done
+
+    fi
+
+    NON_ROOT_SUID_FILES=""
+
+    while IFS= read -r suid_file
+    do
+        [[ -z "$suid_file" ]] && continue
+
+        SUID_OWNER="$(
+            stat -c '%U' "$suid_file" 2>/dev/null
+        )"
+
+        if [[ -n "$SUID_OWNER" && "$SUID_OWNER" != "root" ]]
+        then
+            NON_ROOT_SUID_FILES+="$suid_file -> owner=$SUID_OWNER"$'\n'
+        fi
+
+    done <<< "$SUID_FILES"
+
+    if [[ -z "$NON_ROOT_SUID_FILES" ]]
+    then
+        echo "[PASS] All detected SUID files are owned by root"
+    else
+        echo "[WARNING] SUID files owned by non-root accounts detected"
+        printf '%s' "$NON_ROOT_SUID_FILES"
+    fi
+
+    echo "[INFO] SUID/SGID presence alone does not indicate a vulnerability"
+
+else
+
+    echo "[INFO] Complete SUID/SGID discovery skipped because the auditor is not running as root"
+    echo "[INFO] Run with sudo for the complete privileged-file audit"
+
+fi
