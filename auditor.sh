@@ -1542,3 +1542,246 @@ else
     echo "[INFO] Run with sudo for the complete privileged-file audit"
 
 fi
+
+
+echo
+echo "[DISK & STORAGE SECURITY]"
+
+echo
+
+if command -v df >/dev/null 2>&1
+then
+
+    DISK_WARNING_COUNT=0
+    DISK_CRITICAL_COUNT=0
+
+    echo "Filesystem usage:"
+
+    while read -r filesystem blocks used available use_percent mount_point
+    do
+        [[ "$filesystem" == "Filesystem" ]] && continue
+        [[ -z "$filesystem" ]] && continue
+
+        USE_VALUE="${use_percent%\%}"
+
+        if ! [[ "$USE_VALUE" =~ ^[0-9]+$ ]]
+        then
+            continue
+        fi
+
+        printf "  %-28s %-8s %3s%% mounted on %s\n" \
+            "$filesystem" \
+            "$(numfmt --to=iec --suffix=B --format='%.1f' "${blocks}K" 2>/dev/null || echo "${blocks}K")" \
+            "$USE_VALUE" \
+            "$mount_point"
+
+        if [[ "$USE_VALUE" -ge 95 ]]
+        then
+            echo "    [CRITICAL] Filesystem is critically full"
+            DISK_CRITICAL_COUNT=$((DISK_CRITICAL_COUNT + 1))
+
+        elif [[ "$USE_VALUE" -ge 80 ]]
+        then
+            echo "    [WARNING] Filesystem usage is high"
+            DISK_WARNING_COUNT=$((DISK_WARNING_COUNT + 1))
+
+        fi
+
+    done < <(
+        df -Pk \
+            -x tmpfs \
+            -x devtmpfs \
+            2>/dev/null
+    )
+
+    echo
+
+    if [[ "$DISK_CRITICAL_COUNT" -gt 0 ]]
+    then
+        echo "[CRITICAL] $DISK_CRITICAL_COUNT filesystem(s) are at or above 95% usage"
+
+    elif [[ "$DISK_WARNING_COUNT" -gt 0 ]]
+    then
+        echo "[WARNING] $DISK_WARNING_COUNT filesystem(s) are at or above 80% usage"
+
+    else
+        echo "[PASS] No monitored filesystem is above 80% usage"
+    fi
+
+    ROOT_DISK_USAGE="$(
+        df -P / 2>/dev/null |
+        awk '
+            NR == 2 {
+                gsub(/%/, "", $5)
+                print $5
+            }
+        '
+    )"
+
+    if [[ "$ROOT_DISK_USAGE" =~ ^[0-9]+$ ]]
+    then
+        echo "[INFO] Root filesystem usage: ${ROOT_DISK_USAGE}%"
+    fi
+
+
+    echo
+    echo "Inode usage:"
+
+    INODE_WARNING_COUNT=0
+    INODE_CRITICAL_COUNT=0
+
+    while read -r filesystem inodes iused ifree iuse_percent mount_point
+    do
+        [[ "$filesystem" == "Filesystem" ]] && continue
+        [[ -z "$filesystem" ]] && continue
+
+        INODE_USE_VALUE="${iuse_percent%\%}"
+
+        if ! [[ "$INODE_USE_VALUE" =~ ^[0-9]+$ ]]
+        then
+            continue
+        fi
+
+        printf "  %-28s %3s%% mounted on %s\n" \
+            "$filesystem" \
+            "$INODE_USE_VALUE" \
+            "$mount_point"
+
+        if [[ "$INODE_USE_VALUE" -ge 95 ]]
+        then
+            echo "    [CRITICAL] Inode usage is critically high"
+            INODE_CRITICAL_COUNT=$((INODE_CRITICAL_COUNT + 1))
+
+        elif [[ "$INODE_USE_VALUE" -ge 80 ]]
+        then
+            echo "    [WARNING] Inode usage is high"
+            INODE_WARNING_COUNT=$((INODE_WARNING_COUNT + 1))
+
+        fi
+
+    done < <(
+        df -Pi \
+            -x tmpfs \
+            -x devtmpfs \
+            2>/dev/null
+    )
+
+    echo
+
+    if [[ "$INODE_CRITICAL_COUNT" -gt 0 ]]
+    then
+        echo "[CRITICAL] $INODE_CRITICAL_COUNT filesystem(s) are at or above 95% inode usage"
+
+    elif [[ "$INODE_WARNING_COUNT" -gt 0 ]]
+    then
+        echo "[WARNING] $INODE_WARNING_COUNT filesystem(s) are at or above 80% inode usage"
+
+    else
+        echo "[PASS] No monitored filesystem has high inode usage"
+    fi
+
+else
+
+    echo "[WARNING] The df command is not available"
+    echo "[INFO] Filesystem capacity checks could not be performed"
+
+fi
+
+
+echo
+
+if command -v findmnt >/dev/null 2>&1
+then
+
+    ROOT_MOUNT_INFO="$(
+        findmnt \
+            -n \
+            -o SOURCE,FSTYPE,OPTIONS \
+            / \
+            2>/dev/null
+    )"
+
+    if [[ -n "$ROOT_MOUNT_INFO" ]]
+    then
+        echo "Root filesystem mount:"
+        echo "  $ROOT_MOUNT_INFO"
+    else
+        echo "[INFO] Unable to determine root filesystem mount options"
+    fi
+
+    TMP_EXACT_MOUNT="$(
+        findmnt \
+            -n \
+            -o TARGET \
+            /tmp \
+            2>/dev/null
+    )"
+
+    if [[ "$TMP_EXACT_MOUNT" == "/tmp" ]]
+    then
+
+        TMP_MOUNT_INFO="$(
+            findmnt \
+                -n \
+                -o SOURCE,FSTYPE,OPTIONS \
+                /tmp \
+                2>/dev/null
+        )"
+
+        echo
+        echo "/tmp separate mount:"
+        echo "  $TMP_MOUNT_INFO"
+
+        TMP_OPTIONS="$(
+            findmnt \
+                -n \
+                -o OPTIONS \
+                /tmp \
+                2>/dev/null
+        )"
+
+        if printf '%s\n' "$TMP_OPTIONS" |
+           grep -qw nosuid
+        then
+            echo "[PASS] /tmp mount uses nosuid"
+        else
+            echo "[INFO] /tmp mount does not use nosuid"
+        fi
+
+        if printf '%s\n' "$TMP_OPTIONS" |
+           grep -qw nodev
+        then
+            echo "[PASS] /tmp mount uses nodev"
+        else
+            echo "[INFO] /tmp mount does not use nodev"
+        fi
+
+        if printf '%s\n' "$TMP_OPTIONS" |
+           grep -qw noexec
+        then
+            echo "[INFO] /tmp mount uses noexec"
+        else
+            echo "[INFO] /tmp mount does not use noexec"
+        fi
+
+    else
+
+        TMP_BACKING_MOUNT="$(
+            findmnt \
+                -T /tmp \
+                -n \
+                -o TARGET,SOURCE,FSTYPE,OPTIONS \
+                2>/dev/null
+        )"
+
+        echo
+        echo "[INFO] /tmp is not a separate filesystem"
+        echo "[INFO] /tmp backing mount: $TMP_BACKING_MOUNT"
+
+    fi
+
+else
+
+    echo "[INFO] findmnt is not available; mount-option checks were skipped"
+
+fi
