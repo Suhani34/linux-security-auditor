@@ -1,4 +1,80 @@
 #!/usr/bin/env bash
+PASS_COUNT=0
+INFO_COUNT=0
+WARNING_COUNT=0
+CRITICAL_COUNT=0
+
+
+record_finding() {
+    local severity="$1"
+    shift
+
+    case "$severity" in
+
+        PASS)
+            PASS_COUNT=$((PASS_COUNT + 1))
+            ;;
+
+        INFO)
+            INFO_COUNT=$((INFO_COUNT + 1))
+            ;;
+
+        WARNING)
+            WARNING_COUNT=$((WARNING_COUNT + 1))
+            ;;
+
+        CRITICAL)
+            CRITICAL_COUNT=$((CRITICAL_COUNT + 1))
+            ;;
+
+        *)
+            echo "[ERROR] Unknown finding severity: $severity"
+            return 1
+            ;;
+
+    esac
+
+    echo "[$severity] $*"
+}
+
+
+pass() {
+    record_finding "PASS" "$@"
+}
+
+
+info() {
+    record_finding "INFO" "$@"
+}
+
+
+warning() {
+    record_finding "WARNING" "$@"
+}
+
+
+critical() {
+    record_finding "CRITICAL" "$@"
+}
+
+
+print_summary() {
+    local total_findings
+
+    total_findings=$((PASS_COUNT + INFO_COUNT + WARNING_COUNT + CRITICAL_COUNT))
+
+    echo
+    echo "=================================================="
+    echo "                 AUDIT SUMMARY"
+    echo "=================================================="
+    echo
+    echo "PASS findings      : $PASS_COUNT"
+    echo "WARNING findings   : $WARNING_COUNT"
+    echo "CRITICAL findings  : $CRITICAL_COUNT"
+    echo "INFO findings      : $INFO_COUNT"
+    echo
+    echo "Total findings     : $total_findings"
+}
 
 echo "======================================================================"
 echo "                        LINUX SECURITY AUDITOR                        "
@@ -94,9 +170,9 @@ echo
 
 if [[ "$UID_ZERO_COUNT" -eq 1 && "$UID_ZERO_USERS" == "root" ]]
 then
-    echo "[PASS] Only root has UID 0"
+    pass "Only root has UID 0"
 else
-    echo "[CRITICAL] Unexpected UID 0 account detected"
+    critical "Unexpected UID 0 account detected"
 
     awk -F: '
         $3 == 0 {
@@ -114,9 +190,9 @@ DUPLICATE_UIDS="$(
 
 if [[ -z "$DUPLICATE_UIDS" ]]
 then
-    echo "[PASS] No duplicate UIDs detected"
+    pass "No duplicate UIDs detected"
 else
-    echo "[WARNING] Duplicate UIDs detected"
+    warning "Duplicate UIDs detected"
 
     printf '%s\n' "$DUPLICATE_UIDS" |
     while IFS= read -r duplicate_uid
@@ -147,9 +223,9 @@ done < /etc/passwd
 
 if [[ "$MISSING_HOME_COUNT" -eq 0 ]]
 then
-    echo "[PASS] All human users have valid home directories"
+    pass "All human users have valid home directories"
 else
-    echo "[WARNING] $MISSING_HOME_COUNT human user(s) have missing home directories"
+    warning "$MISSING_HOME_COUNT human user(s) have missing home directories"
     printf '%s' "$MISSING_HOME_USERS"
 fi
 
@@ -169,7 +245,7 @@ then
 
 		echo
 		echo "Sudo group members : 0"
-		echo "[INFO] No explicit users are listed in the sudo group"
+		info  "No explicit users are listed in the sudo group"
 	else
 		SUDO_USER_COUNT="$(
 			printf '%s\n' "$SUDO_GROUP_MEMBERS" |
@@ -192,18 +268,18 @@ fi
 
 if id -nG "$INVOKING_USER" | grep -qw sudo
 then
-	echo "[INFO] Current user '$INVOKING_USER' is a member of the sudo group"
+	info "Current user '$INVOKING_USER' is a member of the sudo group"
 else
-	echo "[INFO] Current user '$INVOKING_USER' is not a member of the sudo group"
+	info "Current user '$INVOKING_USER' is not a member of the sudo group"
 fi
 
 if [[ "$EUID" -eq 0 ]]
 then
 	if visudo -c >/dev/null 2>&1
 	then
-		echo "[PASS] sudoers configuration syntax is valid"
+		pass "sudoers configuration syntax is valid"
 	else
-		echo "[CRITICAL] sudoers configuration contains syntax errors"
+		critical "sudoers configuration contains syntax errors"
 	fi
 
 	NOPASSWD_RULES="$(
@@ -215,9 +291,9 @@ then
 	
 	if [[ -z "$NOPASSWD_RULES" ]]
 	then
-		echo "[PASS] No passwordless sudo rules detected"
+		pass "No passwordless sudo rules detected"
 	else
-		echo "[WARNING] Passwordless sudo rule(s) detected"
+		warning "Passwordless sudo rule(s) detected"
 
 		printf '%s\n' "$NOPASSWD_RULES" |
 		while IFS= read -r rule
@@ -228,17 +304,17 @@ then
 		if printf '$s\n' "$NOPASSWD_RULES" |
 			grep -Eq 'NOPASSWD:[[:spcae:]]*ALL([[:apce:]]*($|#)|[[:spcae:]]*,)'
 		then
-			echo "[CRITICAL] Unrestricted NOPASSWD: All rule detected"
+			critical "Unrestricted NOPASSWD: All rule detected"
 		fi
 	fi
 else
-	echo "[INFO] Full sudoers inspection skipped because the auditor is not running as root"
-	echo "[INFO] Run with sudo for the complete privilege audit"
+	info "Full sudoers inspection skipped because the auditor is not running as root"
+	info "Run with sudo for the complete privilege audit"
 fi
 else
 
 	echo 
-	echo "[INFO] sudo is not installed on this system"
+	info "sudo is not installed on this system"
 fi
 
 
@@ -330,23 +406,23 @@ then
 
 		if [[ "$NON_LOOPBACK_TCP_COUNT" -eq 0 ]]
 		then
-			echo "[PASS] All TCP listeners are restricted to loopback addresses"
+			pass "All TCP listeners are restricted to loopback addresses"
 		else
-			echo "[INFO] $NON_LOOPBACK_TCP_COUNT TCP listener(s) are bound to non-loopback interfaces"
+			info "$NON_LOOPBACK_TCP_COUNT TCP listener(s) are bound to non-loopback interfaces"
 		fi
 
 	else
         	echo
-        	echo "[INFO] No listening TCP sockets detected"
+        	info "No listening TCP sockets detected"
 	fi
 
 	if printf '%s\n' "$TCP_LISTENERS" |
        		awk '{print $4}' |
        		grep -Eq '(^|:)22$'
     	then
-        	echo "[INFO] TCP port 22 is listening; commonly associated with SSH"
+        	info "TCP port 22 is listening; commonly associated with SSH"
 	else
-        	echo "[INFO] TCP port 22 is not listening"
+        	info "TCP port 22 is not listening"
     	fi
 
 	LEGACY_PORT_FOUND=0
@@ -355,7 +431,7 @@ then
        		awk '{print $4}' |
        		grep -Eq '(^|:)21$'
     	then
-        	echo "[WARNING] TCP port 21 is listening; commonly associated with FTP"
+       		warning "TCP port 21 is listening; commonly associated with FTP"
         	LEGACY_PORT_FOUND=1
     	fi
 
@@ -363,13 +439,13 @@ then
        		awk '{print $4}' |
        		grep -Eq '(^|:)23$'
     	then
-        	echo "[WARNING] TCP port 23 is listening; commonly associated with Telnet"
+        	warning "TCP port 23 is listening; commonly associated with Telnet"
         	LEGACY_PORT_FOUND=1
     	fi
 
 	if [[ "$LEGACY_PORT_FOUND" -eq 0 ]]
     	then
-        	echo "[PASS] No common insecure legacy TCP ports detected"
+        	pass "No common insecure legacy TCP ports detected"
     	fi
 
 	DATABASE_WARNING_COUNT=0
@@ -388,7 +464,7 @@ then
                 		case "$ADDRESS" in
 
                     			"0.0.0.0"|"*"|"[::]"|"::")
-                        			echo "[WARNING] Data-service port $PORT is bound to all interfaces"
+                        			warning "Data-service port $PORT is bound to all interfaces"
                         			DATABASE_WARNING_COUNT=$((DATABASE_WARNING_COUNT + 1))
                         			;;
                 		esac
@@ -400,14 +476,14 @@ then
 
 	if [[ "$DATABASE_WARNING_COUNT" -eq 0 ]]
     	then
-        	echo "[PASS] No monitored database/data-service ports are bound to all interfaces"
+        	pass "No monitored database/data-service ports are bound to all interfaces"
     	fi
 
 else
 
     echo
-    echo "[WARNING] The 'ss' command is not available"
-    echo "[INFO] Network socket checks could not be performed"
+    warning "The 'ss' command is not available"
+    info "Network socket checks could not be performed"
 
 fi
 
@@ -487,9 +563,9 @@ then
 
 	if [[ "$FAILED_SERVICE_COUNT" -eq 0 ]]
     	then
-        	echo "[PASS] No failed systemd services detected"
+        	pass "No failed systemd services detected"
     	else
-        	echo "[WARNING] $FAILED_SERVICE_COUNT failed systemd service(s) detected"
+        	warning "$FAILED_SERVICE_COUNT failed systemd service(s) detected"
 
         	printf '%s\n' "$FAILED_SERVICES" |
         	awk '{print "  - " $1}'
@@ -508,16 +584,16 @@ then
 
 	if systemctl is-active --quiet ssh.service 2>/dev/null
     	then
-        	echo "[INFO] SSH service is active"
+        	info "SSH service is active"
 
         	if systemctl is-enabled --quiet ssh.service 2>/dev/null
         	then
-            		echo "[INFO] SSH service is enabled at boot"
+            		info "SSH service is enabled at boot"
         	else
-            		echo "[INFO] SSH service is not enabled at boot"
+            		info "SSH service is not enabled at boot"
         	fi
     	else
-        	echo "[INFO] SSH service is not active"
+        	info "SSH service is not active"
     	fi
 
 	LEGACY_SERVICE_FOUND=0
@@ -537,15 +613,15 @@ then
             		case "$service_name" in
 
                 		telnet.service)
-                    			echo "[WARNING] Telnet service is active"
+                    			warning "Telnet service is active"
                     			;;
 
                 		rsh.service|rlogin.service|rexec.service)
-                    			echo "[WARNING] Legacy remote-access service '$service_name' is active"
+                    			warning "Legacy remote-access service '$service_name' is active"
                     			;;
 
                 		vsftpd.service|proftpd.service)
-                   			echo "[WARNING] FTP server service '$service_name' is active; review whether plaintext FTP is required"
+                   			warning "FTP server service '$service_name' is active; review whether plaintext FTP is required"
                     			;;
 
             		esac
@@ -557,14 +633,14 @@ then
 
 	if [[ "$LEGACY_SERVICE_FOUND" -eq 0 ]]
     	then
-        	echo "[PASS] No monitored insecure legacy services detected"
+        	pass "No monitored insecure legacy services detected"
     	fi
 
 else
 
     echo
-    echo "[WARNING] systemctl is not available"
-    echo "[INFO] systemd service checks could not be performed"
+    warning "systemctl is not available"
+    info "systemd service checks could not be performed"
 
 fi
 
@@ -585,12 +661,12 @@ then
     echo "Running processes      : $TOTAL_PROCESS_COUNT"
     echo "Root-owned processes   : $ROOT_PROCESS_COUNT"
 
-    echo "[INFO] Root-owned processes require context; their presence alone is not a security issue"
+    info "Root-owned processes require context; their presence alone is not a security issue"
 
 else
 
     echo
-    echo "[WARNING] The ps command is not available"
+    warning "The ps command is not available"
 
 fi
 
@@ -616,7 +692,7 @@ then
 		then
 			echo "Status        : ACTIVE"
 			echo 
-			echo "[PASS] UFW firewall is active"
+			pass "UFW firewall is active"
 
 			DEFAULT_LINE="$(
 				printf '%s\n' "$UFW_VERBOSE" |
@@ -663,15 +739,15 @@ then
 			case "$INCOMING_POLICY" in
 
                 		deny|reject)
-                    			echo "[PASS] Default incoming traffic is blocked"
+                    			warning "Default incoming traffic is blocked"
                     			;;
 
                 		allow)
-                    			echo "[WARNING] Default incoming traffic is allowed"
+                    			warning  "Default incoming traffic is allowed"
                     			;;
 
                 		*)
-                    			echo "[WARNING] Unable to determine default incoming policy"
+                    			warning "Unable to determine default incoming policy"
                     			;;
 
             		esac
@@ -679,9 +755,9 @@ then
 			if printf '%s\n' "$UFW_VERBOSE" |
                		  grep -Eq '^Logging: on'
             		then
-                		echo "[INFO] UFW logging is enabled"
+                		info "UFW logging is enabled"
             		else
-                		echo "[INFO] UFW logging is disabled"
+                		info "UFW logging is disabled"
             		fi
 
             		echo
@@ -707,17 +783,17 @@ then
 			if printf '%s\n' "$UFW_RULES" |
                		  grep -Eq '22(/tcp)?[[:space:]]+.*ALLOW'
             		then
-                		echo "[INFO] SSH port 22 is explicitly allowed by UFW"
+                		info "SSH port 22 is explicitly allowed by UFW"
             		else
-                		echo "[INFO] SSH port 22 is not explicitly allowed by UFW"
+                		info "SSH port 22 is not explicitly allowed by UFW"
             		fi
 
 			if printf '%s\n' "$UFW_RULES" |
                		  grep -Eq '23(/tcp)?[[:space:]]+.*ALLOW'
             		then
-                		echo "[WARNING] Telnet-associated TCP port 23 is explicitly allowed"
+                		warning "Telnet-associated TCP port 23 is explicitly allowed"
             		else
-                		echo "[PASS] Telnet-associated port 23 is not explicitly allowed"
+                		pass "Telnet-associated port 23 is not explicitly allowed"
             		fi
 
 			DATABASE_FIREWALL_WARNING=0
@@ -730,7 +806,7 @@ then
                    		  grep -Eq 'Anywhere'
                 		then
 
-                    			echo "[WARNING] Data-service port $database_port is allowed from Anywhere"
+                    			warning "Data-service port $database_port is allowed from Anywhere"
                     			DATABASE_FIREWALL_WARNING=$((DATABASE_FIREWALL_WARNING + 1))
 
                 		fi
@@ -739,14 +815,14 @@ then
 
             		if [[ "$DATABASE_FIREWALL_WARNING" -eq 0 ]]
             		then
-                		echo "[PASS] No monitored database/data-service ports are broadly allowed by UFW"
+                		pass "No monitored database/data-service ports are broadly allowed by UFW"
             		fi
 
 		else
 
             		echo "Status        : INACTIVE"
             		echo
-            		echo "[CRITICAL] UFW firewall is disabled"
+            		critical "UFW firewall is disabled"
 
         	fi
 
@@ -754,16 +830,16 @@ then
 
         	echo "Status        : Requires elevated privileges"
         	echo
-        	echo "[INFO] Full firewall inspection skipped because the auditor is not running as root"
-        	echo "[INFO] Run with sudo for the complete firewall audit"
+        	info "Full firewall inspection skipped because the auditor is not running as root"
+        	info "Run with sudo for the complete firewall audit"
 
     	fi
 
 else
 
     echo
-    echo "[WARNING] UFW is not installed"
-    echo "[INFO] UFW firewall checks could not be performed"
+    warning "UFW is not installed"
+    info "UFW firewall checks could not be performed"
 
 fi
 
@@ -801,9 +877,9 @@ then
 	then
 		if "$SSHD_BIN" -t >/dev/null 2>&1
 		then
-			echo "[PASS] SSH configuration syntax is valid"
+			pass "SSH configuration syntax is valid"
 		else
-			echo "[CRITICAL] SSH configuration validation failed"
+			critical "SSH configuration validation failed"
 		fi
 
 		SSHD_EFFECTIVE="$(
@@ -837,23 +913,23 @@ then
 			case "$SSH_ROOT_LOGIN" in
 
                 		no)
-                    			echo "[PASS] Direct root SSH login is disabled"
+                    			pass "Direct root SSH login is disabled"
                     			;;
 
                 		prohibit-password|without-password)
-                    			echo "[INFO] Root password authentication is prohibited, but key-based root access may still be permitted"
+                    			info "Root password authentication is prohibited, but key-based root access may still be permitted"
                     			;;
 
                 		forced-commands-only)
-                    			echo "[INFO] Root SSH access is restricted to forced commands"
+                    			info "Root SSH access is restricted to forced commands"
                     			;;
 
                 		yes)
-                    			echo "[CRITICAL] Direct root SSH login is permitted"
+                    			critical "Direct root SSH login is permitted"
                     			;;
 
                 		*)
-                    			echo "[WARNING] Unable to determine SSH root-login policy"
+                    			warning "Unable to determine SSH root-login policy"
                     			;;
 
             		esac
@@ -861,15 +937,15 @@ then
 			case "$SSH_PASSWORD_AUTH" in
 
                 		no)
-                    			echo "[PASS] SSH password authentication is disabled"
+                    			pass "SSH password authentication is disabled"
                     			;;
 
                 		yes)
-                    			echo "[WARNING] SSH password authentication is enabled"
+                    			warning "SSH password authentication is enabled"
                     			;;
 
                 		*)
-                    			echo "[WARNING] Unable to determine SSH password-authentication policy"
+                    			warning "Unable to determine SSH password-authentication policy"
                     			;;
 
             		esac
@@ -877,15 +953,15 @@ then
 			case "$SSH_PUBKEY_AUTH" in
 
                 		yes)
-                    			echo "[PASS] SSH public-key authentication is enabled"
+                    			pass "SSH public-key authentication is enabled"
                     			;;
 
                 		no)
-                    			echo "[WARNING] SSH public-key authentication is disabled"
+                    			warning "SSH public-key authentication is disabled"
                     			;;
 
                 		*)
-                    			echo "[WARNING] Unable to determine SSH public-key authentication policy"
+                    			warning "Unable to determine SSH public-key authentication policy"
                     			;;
 
             		esac
@@ -893,21 +969,21 @@ then
 			case "$SSH_EMPTY_PASSWORDS" in
 
                 		no)
-                    			echo "[PASS] SSH empty passwords are prohibited"
+                    			pass "SSH empty passwords are prohibited"
                     			;;
 
                 		yes)
-                    			echo "[CRITICAL] SSH permits accounts with empty passwords"
+                    			critical "SSH permits accounts with empty passwords"
                     			;;
 
                 		*)
-                    			echo "[WARNING] Unable to determine SSH empty-password policy"
+                    			warning "Unable to determine SSH empty-password policy"
                     			;;
 
             		esac
 
-            		echo "[INFO] Maximum SSH authentication attempts per connection: ${SSH_MAX_AUTH_TRIES:-unknown}"
-            		echo "[INFO] Keyboard-interactive authentication: ${SSH_KBD_INTERACTIVE:-unknown}"
+            		info "Maximum SSH authentication attempts per connection: ${SSH_MAX_AUTH_TRIES:-unknown}"
+            		info "Keyboard-interactive authentication: ${SSH_KBD_INTERACTIVE:-unknown}"
 
 			SSH_ALLOW_USERS="$(
                 		printf '%s\n' "$SSHD_EFFECTIVE" |
@@ -935,29 +1011,29 @@ then
 
 			if [[ -n "$SSH_ALLOW_USERS" ]]
             		then
-                		echo "[INFO] SSH AllowUsers restriction: $SSH_ALLOW_USERS"
+                		info "SSH AllowUsers restriction: $SSH_ALLOW_USERS"
             		else
-                		echo "[INFO] No global SSH AllowUsers restriction detected"
+                		info "No global SSH AllowUsers restriction detected"
             		fi
 
             		if [[ -n "$SSH_ALLOW_GROUPS" ]]
             		then
-                		echo "[INFO] SSH AllowGroups restriction: $SSH_ALLOW_GROUPS"
+                		info "SSH AllowGroups restriction: $SSH_ALLOW_GROUPS"
             		else
-                		echo "[INFO] No global SSH AllowGroups restriction detected"
+                		info "No global SSH AllowGroups restriction detected"
             		fi
 
 		else
 
-            		echo "[WARNING] Unable to obtain effective SSH server configuration"
+            		warning "Unable to obtain effective SSH server configuration"
 
         	fi
 
 	else
 
         	echo
-        	echo "[INFO] Full SSH configuration audit skipped because the auditor is not running as root"
-        	echo "[INFO] Run with sudo for the complete SSH audit"
+        	info "Full SSH configuration audit skipped because the auditor is not running as root"
+        	info "Run with sudo for the complete SSH audit"
 
     	fi
 
@@ -965,7 +1041,7 @@ else
 
     echo
     echo "SSH server       : Not installed"
-    echo "[INFO] OpenSSH server was not detected"
+    info "OpenSSH server was not detected"
 
 fi
 
@@ -1064,25 +1140,25 @@ then
 
             if [[ "$FAILED_SSH_COUNT" -eq 0 ]]
             then
-                echo "[PASS] No failed SSH password-authentication attempts detected"
+                 "No failed SSH password-authentication attempts detected"
 
             elif [[ "$FAILED_SSH_COUNT" -le 5 ]]
             then
-                echo "[INFO] A small number of failed SSH authentication attempts were detected"
+                info "A small number of failed SSH authentication attempts were detected"
 
             elif [[ "$FAILED_SSH_COUNT" -le 20 ]]
             then
-                echo "[WARNING] Repeated SSH authentication failures detected"
+                warning "Repeated SSH authentication failures detected"
 
             else
-                echo "[WARNING] High volume of SSH authentication failures detected"
+                warning "High volume of SSH authentication failures detected"
             fi
 
             if [[ "$INVALID_USER_COUNT" -gt 0 ]]
             then
-                echo "[WARNING] SSH login attempts against invalid usernames were detected"
+                warning "SSH login attempts against invalid usernames were detected"
             else
-                echo "[PASS] No SSH invalid-user events detected"
+                pass "No SSH invalid-user events detected"
             fi
 
             if [[ "$FAILED_SSH_COUNT" -gt 0 && -n "$FAILED_SOURCE_IPS" ]]
@@ -1107,27 +1183,27 @@ then
 
             if [[ "$SUCCESSFUL_SSH_COUNT" -gt 0 ]]
             then
-                echo "[INFO] Successful SSH authentication events were recorded during the analysis window"
+                info "Successful SSH authentication events were recorded during the analysis window"
             fi
 
         else
 
-            echo "[INFO] No SSH systemd service unit was detected"
-            echo "[INFO] SSH authentication log analysis was skipped"
+            info "No SSH systemd service unit was detected"
+            info "SSH authentication log analysis was skipped"
 
         fi
 
     else
 
-        echo "[INFO] Authentication log analysis skipped because the auditor is not running as root"
-        echo "[INFO] Run with sudo for the complete authentication audit"
+        info "Authentication log analysis skipped because the auditor is not running as root"
+        info "Run with sudo for the complete authentication audit"
 
     fi
 
 else
 
-    echo "[WARNING] journalctl is not available"
-    echo "[INFO] Authentication log analysis could not be performed"
+    warning "journalctl is not available"
+    info "Authentication log analysis could not be performed"
 
 fi
 
@@ -1164,18 +1240,18 @@ then
     if find /etc/passwd -perm -0002 -print 2>/dev/null |
        grep -q .
     then
-        echo "[CRITICAL] /etc/passwd is world-writable"
+        critical "/etc/passwd is world-writable"
     else
-        echo "[PASS] /etc/passwd is not world-writable"
+        pass "/etc/passwd is not world-writable"
     fi
 
     PASSWD_OWNER="$(stat -c '%U' /etc/passwd 2>/dev/null)"
 
     if [[ "$PASSWD_OWNER" == "root" ]]
     then
-        echo "[PASS] /etc/passwd is owned by root"
+        pass "/etc/passwd is owned by root"
     else
-        echo "[CRITICAL] /etc/passwd is not owned by root"
+        critical "/etc/passwd is not owned by root"
     fi
 
 fi
@@ -1187,25 +1263,25 @@ then
 
     if [[ "$SHADOW_OWNER" == "root" ]]
     then
-        echo "[PASS] /etc/shadow is owned by root"
+        pass "/etc/shadow is owned by root"
     else
-        echo "[CRITICAL] /etc/shadow is not owned by root"
+        critical "/etc/shadow is not owned by root"
     fi
 
     if find /etc/shadow -perm -0004 -print 2>/dev/null |
        grep -q .
     then
-        echo "[CRITICAL] /etc/shadow is readable by other users"
+        critical "/etc/shadow is readable by other users"
     else
-        echo "[PASS] /etc/shadow is not readable by other users"
+        pass "/etc/shadow is not readable by other users"
     fi
 
     if find /etc/shadow -perm -0002 -print 2>/dev/null |
        grep -q .
     then
-        echo "[CRITICAL] /etc/shadow is world-writable"
+        critical "/etc/shadow is world-writable"
     else
-        echo "[PASS] /etc/shadow is not world-writable"
+        pass "/etc/shadow is not world-writable"
     fi
 
 fi
@@ -1217,9 +1293,9 @@ then
 
     if [[ "$SUDOERS_OWNER" == "root" ]]
     then
-        echo "[PASS] /etc/sudoers is owned by root"
+        pass "/etc/sudoers is owned by root"
     else
-        echo "[CRITICAL] /etc/sudoers is not owned by root"
+        critical "/etc/sudoers is not owned by root"
     fi
 
     if find /etc/sudoers \
@@ -1227,9 +1303,9 @@ then
     	-print 2>/dev/null |
     	grep -q .
     then
-        echo "[CRITICAL] /etc/sudoers is writable by group or others"
+        critical "/etc/sudoers is writable by group or others"
     else
-        echo "[PASS] /etc/sudoers is not writable by group or others"
+        pass "/etc/sudoers is not writable by group or others"
     fi
 
 fi
@@ -1242,9 +1318,9 @@ then
 
     if [[ "$SSHD_CONFIG_OWNER" == "root" ]]
     then
-        echo "[PASS] SSH server configuration is owned by root"
+        pass "SSH server configuration is owned by root"
     else
-        echo "[WARNING] SSH server configuration is not owned by root"
+        warning "SSH server configuration is not owned by root"
     fi
 
     if find /etc/ssh/sshd_config \
@@ -1252,9 +1328,9 @@ then
     	-print 2>/dev/null |
     	grep -q .
     then
-        echo "[CRITICAL] SSH server configuration is writable by group or others"
+        critical "SSH server configuration is writable by group or others"
     else
-        echo "[PASS] SSH server configuration is not writable by group or others"
+        pass "SSH server configuration is not writable by group or others"
     fi
 
 fi
@@ -1289,9 +1365,9 @@ then
 
     if [[ "$WORLD_WRITABLE_FILE_COUNT" -eq 0 ]]
     then
-        echo "[PASS] No world-writable regular files detected"
+        pass "No world-writable regular files detected"
     else
-        echo "[WARNING] World-writable regular files detected"
+        warning "World-writable regular files detected"
 
         printf '%s\n' "$WORLD_WRITABLE_FILES" |
         head -n 10 |
@@ -1333,9 +1409,9 @@ then
 
     if [[ "$WORLD_WRITABLE_DIR_COUNT" -eq 0 ]]
     then
-        echo "[PASS] No world-writable directories without sticky bit detected"
+        pass "No world-writable directories without sticky bit detected"
     else
-        echo "[WARNING] World-writable directories without sticky bit detected"
+        warning "World-writable directories without sticky bit detected"
 
         printf '%s\n' "$WORLD_WRITABLE_DIRS_NO_STICKY" |
         head -n 10 |
@@ -1352,8 +1428,8 @@ then
 
 else
 
-    echo "[INFO] System-wide writable-file scan skipped because the auditor is not running as root"
-    echo "[INFO] Run with sudo for the complete file-permission audit"
+    info "System-wide writable-file scan skipped because the auditor is not running as root"
+    info "Run with sudo for the complete file-permission audit"
 
 fi
 
@@ -1466,10 +1542,10 @@ then
 
     if [[ -z "$WRITABLE_PRIVILEGED_FILES" ]]
     then
-        echo "[PASS] No SUID/SGID files are writable by group or others"
+        pass "No SUID/SGID files are writable by group or others"
     else
 
-        echo "[CRITICAL] SUID/SGID file(s) writable by group or others detected"
+        critical "SUID/SGID file(s) writable by group or others detected"
 
         printf '%s\n' "$WRITABLE_PRIVILEGED_FILES" |
         while IFS= read -r privileged_file
@@ -1493,10 +1569,10 @@ then
 
     if [[ -z "$UNUSUAL_PRIVILEGED_FILES" ]]
     then
-        echo "[PASS] No SUID/SGID files detected in common user or temporary directories"
+        pass "No SUID/SGID files detected in common user or temporary directories"
     else
 
-        echo "[WARNING] SUID/SGID files detected in user or temporary directories"
+        warning "SUID/SGID files detected in user or temporary directories"
 
         printf '%s\n' "$UNUSUAL_PRIVILEGED_FILES" |
         while IFS= read -r unusual_file
@@ -1528,18 +1604,18 @@ then
 
     if [[ -z "$NON_ROOT_SUID_FILES" ]]
     then
-        echo "[PASS] All detected SUID files are owned by root"
+        pass "All detected SUID files are owned by root"
     else
-        echo "[WARNING] SUID files owned by non-root accounts detected"
+        warning "SUID files owned by non-root accounts detected"
         printf '%s' "$NON_ROOT_SUID_FILES"
     fi
 
-    echo "[INFO] SUID/SGID presence alone does not indicate a vulnerability"
+    info "SUID/SGID presence alone does not indicate a vulnerability"
 
 else
 
-    echo "[INFO] Complete SUID/SGID discovery skipped because the auditor is not running as root"
-    echo "[INFO] Run with sudo for the complete privileged-file audit"
+    info "Complete SUID/SGID discovery skipped because the auditor is not running as root"
+    info "Run with sudo for the complete privileged-file audit"
 
 fi
 
@@ -1598,14 +1674,14 @@ then
 
     if [[ "$DISK_CRITICAL_COUNT" -gt 0 ]]
     then
-        echo "[CRITICAL] $DISK_CRITICAL_COUNT filesystem(s) are at or above 95% usage"
+        critical "$DISK_CRITICAL_COUNT filesystem(s) are at or above 95% usage"
 
     elif [[ "$DISK_WARNING_COUNT" -gt 0 ]]
     then
-        echo "[WARNING] $DISK_WARNING_COUNT filesystem(s) are at or above 80% usage"
+        warning "$DISK_WARNING_COUNT filesystem(s) are at or above 80% usage"
 
     else
-        echo "[PASS] No monitored filesystem is above 80% usage"
+        pass "No monitored filesystem is above 80% usage"
     fi
 
     ROOT_DISK_USAGE="$(
@@ -1620,7 +1696,7 @@ then
 
     if [[ "$ROOT_DISK_USAGE" =~ ^[0-9]+$ ]]
     then
-        echo "[INFO] Root filesystem usage: ${ROOT_DISK_USAGE}%"
+        info "Root filesystem usage: ${ROOT_DISK_USAGE}%"
     fi
 
 
@@ -1649,12 +1725,12 @@ then
 
         if [[ "$INODE_USE_VALUE" -ge 95 ]]
         then
-            echo "    [CRITICAL] Inode usage is critically high"
+            critical "Inode usage is critically high"
             INODE_CRITICAL_COUNT=$((INODE_CRITICAL_COUNT + 1))
 
         elif [[ "$INODE_USE_VALUE" -ge 80 ]]
         then
-            echo "    [WARNING] Inode usage is high"
+            warning "Inode usage is high"
             INODE_WARNING_COUNT=$((INODE_WARNING_COUNT + 1))
 
         fi
@@ -1670,20 +1746,20 @@ then
 
     if [[ "$INODE_CRITICAL_COUNT" -gt 0 ]]
     then
-        echo "[CRITICAL] $INODE_CRITICAL_COUNT filesystem(s) are at or above 95% inode usage"
+        critical "$INODE_CRITICAL_COUNT filesystem(s) are at or above 95% inode usage"
 
     elif [[ "$INODE_WARNING_COUNT" -gt 0 ]]
     then
-        echo "[WARNING] $INODE_WARNING_COUNT filesystem(s) are at or above 80% inode usage"
+        warning "$INODE_WARNING_COUNT filesystem(s) are at or above 80% inode usage"
 
     else
-        echo "[PASS] No monitored filesystem has high inode usage"
+        pass "No monitored filesystem has high inode usage"
     fi
 
 else
 
-    echo "[WARNING] The df command is not available"
-    echo "[INFO] Filesystem capacity checks could not be performed"
+    warning "The df command is not available"
+    info "Filesystem capacity checks could not be performed"
 
 fi
 
@@ -1706,7 +1782,7 @@ then
         echo "Root filesystem mount:"
         echo "  $ROOT_MOUNT_INFO"
     else
-        echo "[INFO] Unable to determine root filesystem mount options"
+        info "Unable to determine root filesystem mount options"
     fi
 
     TMP_EXACT_MOUNT="$(
@@ -1743,25 +1819,25 @@ then
         if printf '%s\n' "$TMP_OPTIONS" |
            grep -qw nosuid
         then
-            echo "[PASS] /tmp mount uses nosuid"
+            pass "/tmp mount uses nosuid"
         else
-            echo "[INFO] /tmp mount does not use nosuid"
+            info "/tmp mount does not use nosuid"
         fi
 
         if printf '%s\n' "$TMP_OPTIONS" |
            grep -qw nodev
         then
-            echo "[PASS] /tmp mount uses nodev"
+            pass "/tmp mount uses nodev"
         else
-            echo "[INFO] /tmp mount does not use nodev"
+            info "/tmp mount does not use nodev"
         fi
 
         if printf '%s\n' "$TMP_OPTIONS" |
            grep -qw noexec
         then
-            echo "[INFO] /tmp mount uses noexec"
+            info "/tmp mount uses noexec"
         else
-            echo "[INFO] /tmp mount does not use noexec"
+            info "/tmp mount does not use noexec"
         fi
 
     else
@@ -1775,14 +1851,14 @@ then
         )"
 
         echo
-        echo "[INFO] /tmp is not a separate filesystem"
-        echo "[INFO] /tmp backing mount: $TMP_BACKING_MOUNT"
+        info "/tmp is not a separate filesystem"
+        info "/tmp backing mount: $TMP_BACKING_MOUNT"
 
     fi
 
 else
 
-    echo "[INFO] findmnt is not available; mount-option checks were skipped"
+    info "findmnt is not available; mount-option checks were skipped"
 
 fi
 
@@ -1833,16 +1909,16 @@ then
 
     if [[ "$UPGRADABLE_COUNT" -eq 0 ]]
     then
-        echo "[PASS] No pending package updates detected"
+        pass "No pending package updates detected"
     else
-        echo "[WARNING] $UPGRADABLE_COUNT package update(s) are pending"
+        warning "$UPGRADABLE_COUNT package update(s) are pending"
     fi
 
     if [[ "$SECURITY_UPDATE_COUNT" -eq 0 ]]
     then
-        echo "[PASS] No security-related updates were identified in cached APT metadata"
+        pass "No security-related updates were identified in cached APT metadata"
     else
-        echo "[WARNING] $SECURITY_UPDATE_COUNT security-related package update(s) are pending"
+        warning "$SECURITY_UPDATE_COUNT security-related package update(s) are pending"
 
         echo
         echo "Security-related updates:"
@@ -1861,13 +1937,13 @@ then
     fi
 
     echo
-    echo "[INFO] Update results depend on locally cached APT repository metadata"
-    echo "[INFO] Run 'sudo apt update' before the audit when current repository data is required"
+    info "Update results depend on locally cached APT repository metadata"
+    info "Run 'sudo apt update' before the audit when current repository data is required"
 
 else
 
-    echo "[WARNING] APT is not available"
-    echo "[INFO] Package update checks could not be performed"
+    warning "APT is not available"
+    info "Package update checks could not be performed"
 
 fi
 
@@ -1878,7 +1954,7 @@ if [[ -f /var/run/reboot-required ]]
 then
 
     echo "Reboot required          : Yes"
-    echo "[WARNING] A system reboot is required to complete installed updates"
+    warning "A system reboot is required to complete installed updates"
 
     if [[ -f /var/run/reboot-required.pkgs ]]
     then
@@ -1909,7 +1985,7 @@ then
 else
 
     echo "Reboot required          : No"
-    echo "[PASS] No reboot is currently required"
+    pass "No reboot is currently required"
 
 fi
 
@@ -1919,23 +1995,25 @@ echo
 if dpkg -s unattended-upgrades >/dev/null 2>&1
 then
 
-    echo "[INFO] unattended-upgrades package is installed"
+    info "unattended-upgrades package is installed"
 
     if command -v systemctl >/dev/null 2>&1
     then
 
         if systemctl is-enabled --quiet apt-daily-upgrade.timer 2>/dev/null
         then
-            echo "[INFO] apt-daily-upgrade.timer is enabled"
+            info "apt-daily-upgrade.timer is enabled"
         else
-            echo "[INFO] apt-daily-upgrade.timer is not enabled"
+            info "apt-daily-upgrade.timer is not enabled"
         fi
 
     fi
 
 else
 
-    echo "[INFO] unattended-upgrades package is not installed"
-    echo "[INFO] Automatic updates may instead be managed through another patching process"
+    info "unattended-upgrades package is not installed"
+    info "Automatic updates may instead be managed through another patching process"
 
 fi
+
+print_summary
