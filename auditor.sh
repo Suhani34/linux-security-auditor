@@ -12,6 +12,10 @@ SECURITY_SCORE=100
 SECURITY_RATING=""
 
 RECOMMENDATIONS=()
+REPORT_DIR="./reports"
+REPORT_TIMESTAMP="$(date '+%Y-%m-%d_%H%M%S')"
+REPORT_HOSTNAME="$(hostname 2>/dev/null || echo unknown-host)"
+REPORT_FILE=""
 
 if [[ $EUID -eq 0 ]]; then
     AUDIT_MODE="FULL"
@@ -69,6 +73,28 @@ warning() {
 
 critical() {
     record_finding "CRITICAL" "$@"
+}
+
+initialize_report() {
+
+    if ! mkdir -p "$REPORT_DIR"; then
+        echo "[ERROR] Could not create report directory: $REPORT_DIR" >&2
+        return 1
+    fi
+
+    REPORT_FILE="$REPORT_DIR/security-audit-${REPORT_HOSTNAME}-${REPORT_TIMESTAMP}.txt"
+
+    if ! touch "$REPORT_FILE"; then
+        echo "[ERROR] Could not create report file: $REPORT_FILE" >&2
+        return 1
+    fi
+
+    return 0
+}
+
+enable_report_logging() {
+
+    exec > >(tee -a "$REPORT_FILE") 2>&1
 }
 
 add_recommendation() {
@@ -197,6 +223,12 @@ print_summary() {
     echo "============================================================"
 }
 
+if initialize_report; then
+    enable_report_logging
+else
+    exit 1
+fi
+
 echo "======================================================================"
 echo "                        LINUX SECURITY AUDITOR                        "
 echo "======================================================================"
@@ -208,7 +240,6 @@ KERNEL="$(uname -r)"
 ARCHITECTURE="$(uname -m)"
 UPTIME="$(uptime -p)"
 AUDIT_TIME="$(date '+%Y-%m-%d %H:%M:%S')"
-
 
 source /etc/os-release
 OS_NAME="$PRETTY_NAME"
@@ -223,6 +254,8 @@ echo "Uptime           : $UPTIME"
 echo "Audit Time       : $AUDIT_TIME"
 echo "Run By           : $INVOKING_USER"
 echo "Effective As     : $CURRENT_USER"
+echo "Report file      : $REPORT_FILE"
+echo "Audit mode       : $AUDIT_MODE"
 echo
 echo "[USER & ACCOUNT SECURITY]"
 UID_MIN="$(awk '/^[[:space:]]*UID_MIN[[:space:]]+/ {print $2; exit}' /etc/login.defs)"
@@ -2146,3 +2179,6 @@ fi
 
 print_summary
 print_recommendations
+
+echo
+echo "[INFO] Audit report saved to: $REPORT_FILE"
