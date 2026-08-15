@@ -16,6 +16,7 @@ REPORT_DIR="./reports"
 REPORT_TIMESTAMP="$(date '+%Y-%m-%d_%H%M%S')"
 REPORT_HOSTNAME="$(hostname 2>/dev/null || echo unknown-host)"
 REPORT_FILE=""
+PREVIOUS_REPORT=""
 
 if [[ $EUID -eq 0 ]]; then
     AUDIT_MODE="FULL"
@@ -75,12 +76,87 @@ critical() {
     record_finding "CRITICAL" "$@"
 }
 
+find_previous_report() {
+
+    local candidate
+    local candidate_mode
+
+    PREVIOUS_REPORT=""
+
+    while IFS= read -r candidate; do
+
+        if [[ -z "$candidate" ]]; then
+            continue
+        fi
+
+        candidate_mode="$(
+            awk -F ':' '
+                {
+                    key=$1
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+
+                    if (key == "AUDIT MODE") {
+                        value=$2
+                        gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                        print value
+                        exit
+                    }
+                }
+            ' "$candidate" 2>/dev/null
+        )"
+
+        if [[ "$candidate_mode" == "$AUDIT_MODE" ]]; then
+
+            PREVIOUS_REPORT="$candidate"
+            break
+
+        fi
+
+    done < <(
+        find "$REPORT_DIR" \
+            -maxdepth 1 \
+            -type f \
+            -name "security-audit-${REPORT_HOSTNAME}-*.txt" \
+            -printf '%T@|%p\n' 2>/dev/null |
+        sort -t'|' -k1,1nr |
+        cut -d'|' -f2-
+    )
+}
+
+get_report_value() {
+
+    local report_file="$1"
+    local label="$2"
+
+    awk -F ':' -v target="$label" '
+
+        {
+            key=$1
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+
+            if (key == target) {
+
+                value=$2
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+
+                print value
+                exit
+            }
+        }
+
+    ' "$report_file" 2>/dev/null
+}
+
+
+
 initialize_report() {
 
     if ! mkdir -p "$REPORT_DIR"; then
         echo "[ERROR] Could not create report directory: $REPORT_DIR" >&2
         return 1
     fi
+
+    find_previous_report
 
     REPORT_FILE="$REPORT_DIR/security-audit-${REPORT_HOSTNAME}-${REPORT_TIMESTAMP}.txt"
 
@@ -170,6 +246,112 @@ print_recommendations() {
         done
     fi
 
+    echo "============================================================"
+}
+
+print_audit_comparison() {
+
+    local previous_score_raw
+    local previous_score
+    local previous_warnings
+    local previous_criticals
+
+    local score_change
+    local warning_change
+    local critical_change
+
+    local security_trend
+
+    echo
+    echo "============================================================"
+    echo "                  AUDIT COMPARISON"
+    echo "============================================================"
+    echo
+
+    if [[ -z "$PREVIOUS_REPORT" || ! -f "$PREVIOUS_REPORT" ]]; then
+
+        info "No previous compatible $AUDIT_MODE audit report was found."
+        info "A comparison will be available after another $AUDIT_MODE audit is completed."
+
+        echo
+        echo "============================================================"
+
+        return 0
+    fi
+
+    previous_score_raw="$(get_report_value "$PREVIOUS_REPORT" "SECURITY SCORE")"
+    previous_warnings="$(get_report_value "$PREVIOUS_REPORT" "WARNING")"
+    previous_criticals="$(get_report_value "$PREVIOUS_REPORT" "CRITICAL")"
+
+    previous_score="${previous_score_raw%%/*}"
+
+    if [[ ! "$previous_score" =~ ^[0-9]+$ ]] ||
+       [[ ! "$previous_warnings" =~ ^[0-9]+$ ]] ||
+       [[ ! "$previous_criticals" =~ ^[0-9]+$ ]]; then
+
+        warning "The previous report could not be parsed reliably."
+        info "Historical comparison was skipped."
+
+        echo
+        echo "============================================================"
+
+        return 0
+    fi
+
+    score_change=$((SECURITY_SCORE - previous_score))
+    warning_change=$((WARNING_COUNT - previous_warnings))
+    critical_change=$((CRITICAL_COUNT - previous_criticals))
+
+    if (( score_change > 0 )); then
+
+        security_trend="IMPROVED"
+
+    elif (( score_change < 0 )); then
+
+        security_trend="REGRESSED"
+
+    else
+
+        security_trend="UNCHANGED"
+
+    fi
+
+    echo "Previous report     : $PREVIOUS_REPORT"
+    echo "Audit mode          : $AUDIT_MODE"
+
+    echo
+    echo "Previous score      : $previous_score/100"
+    echo "Current score       : $SECURITY_SCORE/100"
+
+    if (( score_change > 0 )); then
+        echo "Score change        : +$score_change points"
+    else
+        echo "Score change        : $score_change points"
+    fi
+
+    echo "Security trend      : $security_trend"
+
+    echo
+    echo "Previous warnings   : $previous_warnings"
+    echo "Current warnings    : $WARNING_COUNT"
+
+    if (( warning_change > 0 )); then
+        echo "Warning change      : +$warning_change"
+    else
+        echo "Warning change      : $warning_change"
+    fi
+
+    echo
+    echo "Previous criticals  : $previous_criticals"
+    echo "Current criticals   : $CRITICAL_COUNT"
+
+    if (( critical_change > 0 )); then
+        echo "Critical change     : +$critical_change"
+    else
+        echo "Critical change     : $critical_change"
+    fi
+
+    echo
     echo "============================================================"
 }
 
@@ -2179,6 +2361,7 @@ fi
 
 print_summary
 print_recommendations
+print_audit_comparison
 
 echo
 echo "[INFO] Audit report saved to: $REPORT_FILE"
