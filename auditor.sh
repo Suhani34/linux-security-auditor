@@ -11,6 +11,8 @@ CRITICAL_PENALTY=12
 SECURITY_SCORE=100
 SECURITY_RATING=""
 
+RECOMMENDATIONS=()
+
 if [[ $EUID -eq 0 ]]; then
     AUDIT_MODE="FULL"
 else
@@ -69,6 +71,18 @@ critical() {
     record_finding "CRITICAL" "$@"
 }
 
+add_recommendation() {
+	local recommendation="$*"
+	local existing_recommendation
+
+	for existing_recommendation in "${RECOMMENDATIONS[@]}"; do
+		if [[ "$existing_recommendation" == "$recommendation" ]]; then
+			return 0
+		fi
+	done
+	RECOMMENDATIONS+=("$recommendation")
+}
+
 calculate_security_score() {
 
     local warning_points
@@ -103,6 +117,35 @@ calculate_security_score() {
     fi
 }
 
+print_recommendations() {
+
+    local recommendation_number=1
+    local recommendation
+
+    echo
+    echo "============================================================"
+    echo "                 REMEDIATION RECOMMENDATIONS"
+    echo "============================================================"
+    echo
+
+    if (( ${#RECOMMENDATIONS[@]} == 0 )); then
+
+        pass "No remediation recommendations were generated."
+
+    else
+
+        for recommendation in "${RECOMMENDATIONS[@]}"; do
+
+            echo "$recommendation_number. $recommendation"
+            echo
+
+            ((recommendation_number+=1))
+
+        done
+    fi
+
+    echo "============================================================"
+}
 
 print_summary() {
     local total_findings
@@ -372,6 +415,7 @@ then
 		pass "No passwordless sudo rules detected"
 	else
 		warning "Passwordless sudo rule(s) detected"
+		add_recommendation "Review sudo privileges and apply least privilege by granting only the commands users actually require."
 
 		printf '%s\n' "$NOPASSWD_RULES" |
 		while IFS= read -r rule
@@ -917,6 +961,7 @@ else
 
     echo
     warning "UFW is not installed"
+    add_recommendation "Enable and verify the host firewall, and allow only the network services that are actually required."
     info "UFW firewall checks could not be performed"
 
 fi
@@ -1004,6 +1049,7 @@ then
 
                 		yes)
                     			critical "Direct root SSH login is permitted"
+					add_recommendation "Disable direct SSH root login and use a normal administrative account with sudo for privileged tasks."
                     			;;
 
                 		*)
@@ -1020,6 +1066,7 @@ then
 
                 		yes)
                     			warning "SSH password authentication is enabled"
+					add_recommendation "Consider using SSH key-based authentication and disabling password authentication after verifying key access works correctly."
                     			;;
 
                 		*)
@@ -1490,6 +1537,7 @@ then
         pass "No world-writable directories without sticky bit detected"
     else
         warning "World-writable directories without sticky bit detected"
+	add_recommendation "Review world-writable files and directories and remove unnecessary write permissions without changing legitimate shared or temporary locations."
 
         printf '%s\n' "$WORLD_WRITABLE_DIRS_NO_STICKY" |
         head -n 10 |
@@ -1685,6 +1733,7 @@ then
         pass "All detected SUID files are owned by root"
     else
         warning "SUID files owned by non-root accounts detected"
+	add_recommendation "Review unexpected SUID executables, verify why elevated execution is required, and remove the SUID bit only when it is unnecessary."
         printf '%s' "$NON_ROOT_SUID_FILES"
     fi
 
@@ -1757,6 +1806,7 @@ then
     elif [[ "$DISK_WARNING_COUNT" -gt 0 ]]
     then
         warning "$DISK_WARNING_COUNT filesystem(s) are at or above 80% usage"
+	add_recommendation "Investigate high disk utilization, remove unnecessary data safely, and ensure sufficient free space remains for logs and system operations."
 
     else
         pass "No monitored filesystem is above 80% usage"
@@ -1997,7 +2047,7 @@ then
         pass "No security-related updates were identified in cached APT metadata"
     else
         warning "$SECURITY_UPDATE_COUNT security-related package update(s) are pending"
-
+	add_recommendation "Review and install pending security updates after confirming they are appropriate for the system."
         echo
         echo "Security-related updates:"
 
@@ -2095,3 +2145,4 @@ else
 fi
 
 print_summary
+print_recommendations
