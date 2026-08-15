@@ -4,6 +4,18 @@ INFO_COUNT=0
 WARNING_COUNT=0
 CRITICAL_COUNT=0
 
+MAX_SECURITY_SCORE=100
+WARNING_PENALTY=4
+CRITICAL_PENALTY=12
+
+SECURITY_SCORE=100
+SECURITY_RATING=""
+
+if [[ $EUID -eq 0 ]]; then
+    AUDIT_MODE="FULL"
+else
+    AUDIT_MODE="PARTIAL"
+fi
 
 record_finding() {
     local severity="$1"
@@ -57,23 +69,89 @@ critical() {
     record_finding "CRITICAL" "$@"
 }
 
+calculate_security_score() {
+
+    local warning_points
+    local critical_points
+    local total_penalty
+
+    warning_points=$((WARNING_COUNT * WARNING_PENALTY))
+    critical_points=$((CRITICAL_COUNT * CRITICAL_PENALTY))
+
+    total_penalty=$((warning_points + critical_points))
+
+    SECURITY_SCORE=$((MAX_SECURITY_SCORE - total_penalty))
+
+    if (( SECURITY_SCORE < 0 )); then
+        SECURITY_SCORE=0
+    fi
+
+    if (( SECURITY_SCORE >= 90 )); then
+        SECURITY_RATING="STRONG"
+
+    elif (( SECURITY_SCORE >= 75 )); then
+        SECURITY_RATING="GOOD"
+
+    elif (( SECURITY_SCORE >= 60 )); then
+        SECURITY_RATING="NEEDS IMPROVEMENT"
+
+    elif (( SECURITY_SCORE >= 40 )); then
+        SECURITY_RATING="WEAK"
+
+    else
+        SECURITY_RATING="POOR"
+    fi
+}
+
 
 print_summary() {
     local total_findings
+    local warning_points
+    local critical_points
+    local total_penalty
 
     total_findings=$((PASS_COUNT + INFO_COUNT + WARNING_COUNT + CRITICAL_COUNT))
+
+    warning_points=$((WARNING_COUNT * WARNING_PENALTY))
+    critical_points=$((CRITICAL_COUNT * CRITICAL_PENALTY))
+    total_penalty=$((warning_points + critical_points))
+
+    calculate_security_score
 
     echo
     echo "=================================================="
     echo "                 AUDIT SUMMARY"
     echo "=================================================="
     echo
-    echo "PASS findings      : $PASS_COUNT"
-    echo "WARNING findings   : $WARNING_COUNT"
-    echo "CRITICAL findings  : $CRITICAL_COUNT"
-    echo "INFO findings      : $INFO_COUNT"
+
+    echo "Total Audit Results: $total_findings"
     echo
-    echo "Total findings     : $total_findings"
+
+    echo "PASS 	             : $PASS_COUNT"
+    echo "WARNING 	     : $WARNING_COUNT"
+    echo "CRITICAL 	     : $CRITICAL_COUNT"
+    echo "INFO 	             : $INFO_COUNT"
+    echo
+    echo "Warning Penalty    : -$warning_points"
+    echo "Critical Peanlty   : -$critical_points"
+    echo "Total Penalty      : -$total_points"
+
+    echo
+    echo "SECURITY SCORE      : $SECURITY_SCORE/$MAX_SECURITY_SCORE"
+    echo "RATING              : $SECURITY_RATING"
+    echo "AUDIT MODE          : $AUDIT_MODE"
+
+    if [[ "$AUDIT_MODE" == "PARTIAL" ]]; then
+        echo
+        info "This was a partial security audit."
+        info "Run the auditor with sudo for checks that require elevated privileges."
+    fi
+
+    echo
+    info "The security score is a heuristic assessment based on checks performed by this auditor."
+
+    echo
+    echo "============================================================"
 }
 
 echo "======================================================================"
@@ -1653,12 +1731,12 @@ then
 
         if [[ "$USE_VALUE" -ge 95 ]]
         then
-            echo "    [CRITICAL] Filesystem is critically full"
+            critical "Filesystem is critically full"
             DISK_CRITICAL_COUNT=$((DISK_CRITICAL_COUNT + 1))
 
         elif [[ "$USE_VALUE" -ge 80 ]]
         then
-            echo "    [WARNING] Filesystem usage is high"
+            warning "Filesystem usage is high"
             DISK_WARNING_COUNT=$((DISK_WARNING_COUNT + 1))
 
         fi
