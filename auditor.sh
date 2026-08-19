@@ -13,6 +13,10 @@ source "$LIB_DIR/auth_checks.sh"
 source "$LIB_DIR/update_checks.sh"
 source "$LIB_DIR/reporting.sh"
 
+EXIT_SUCCESS=0
+EXIT_RUNTIME_ERROR=1
+EXIT_DEPENDENCY_ERROR=2
+
 PASS_COUNT=0
 INFO_COUNT=0
 WARNING_COUNT=0
@@ -42,10 +46,22 @@ else
     AUDIT_MODE="PARTIAL"
 fi
 
+if ! check_required_dependencies
+then
+
+    echo "[ERROR] Linux Security Auditor cannot start because required dependencies are missing." >&2
+
+    exit "$EXIT_DEPENDENCY_ERROR"
+
+fi
+
 if initialize_report; then
     enable_report_logging
+    report_optional_dependencies
 else
-    exit 1
+    echo "[ERROR] Auditor report initialization failed." >&2
+
+    exit "$EXIT_RUNTIME_ERROR"
 fi
 
 echo "======================================================================"

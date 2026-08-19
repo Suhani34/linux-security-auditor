@@ -25,4 +25,19 @@ echo "Effective As     : $CURRENT_USER"
 echo "Report file      : $REPORT_FILE"
 echo "Audit mode       : $AUDIT_MODE"
 
+if [[ -r /etc/os-release ]]
+then
+
+    source /etc/os-release
+
+    OS_NAME="${PRETTY_NAME:-Unknown Linux}"
+
+else
+
+    OS_NAME="Unknown Linux"
+
+    echo "[INFO] /etc/os-release could not be read."
+
+fi
+
 }

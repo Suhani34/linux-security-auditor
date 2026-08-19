@@ -5,6 +5,44 @@ echo
 echo "[USER & ACCOUNT SECURITY]"
 UID_MIN="$(awk '/^[[:space:]]*UID_MIN[[:space:]]+/ {print $2; exit}' /etc/login.defs)"
 UID_MAX="$(awk '/^[[:space:]]*UID_MAX[[:space:]]+/ {print $2; exit}' /etc/login.defs)"
+
+if [[ -r /etc/login.defs ]]
+then
+
+    UID_MIN="$(
+        awk '/^[[:space:]]*UID_MIN[[:space:]]+/ {
+            print $2
+            exit
+        }' /etc/login.defs
+    )"
+
+    UID_MAX="$(
+        awk '/^[[:space:]]*UID_MAX[[:space:]]+/ {
+            print $2
+            exit
+        }' /etc/login.defs
+    )"
+
+else
+
+    UID_MIN=""
+    UID_MAX=""
+
+    echo "[INFO] /etc/login.defs could not be read."
+
+fi
+
+
+if [[ -z "$UID_MIN" ]]
+then
+    UID_MIN=1000
+fi
+
+if [[ -z "$UID_MAX" ]]
+then
+    UID_MAX=60000
+fi
+
 if [[ -z "$UID_MIN" ]]
 then 
      UID_MIN=1000
