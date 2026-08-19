@@ -1,0 +1,226 @@
+======================================================================
+                        LINUX SECURITY AUDITOR                        
+======================================================================
+
+[SYSTEM INFORMATION]
+Host             : smprj9434-VMware-Virtual-Platform
+OS               : Ubuntu 24.04.4 LTS
+Kernel           : 7.0.0-28-generic
+Architecture     : x86_64
+Uptime           : up 1 hour, 58 minutes
+Audit Time       : 2026-08-15 18:06:35
+Run By           : smprj9434
+Effective As     : smprj9434
+
+[USER & ACCOUNT SECURITY]
+
+Human user accounts : 1
+  - smprj9434 (UID 1000, shell /bin/bash)
+
+Users with login shells : 2
+root (/bin/bash)
+smprj9434 (/bin/bash)
+
+[PASS] Only root has UID 0
+[PASS] No duplicate UIDs detected
+[PASS] All human users have valid home directories
+
+[SUDO & PRIVILEGE SECURITY]
+
+Sudo group members : 1
+ - smprj9434
+[INFO] Current user 'smprj9434' is a member of the sudo group
+[INFO] Full sudoers inspection skipped because the auditor is not running as root
+[INFO] Run with sudo for the complete privilege audit
+
+[NETWORK & LISTENING PORTS]
+
+Host IP addresses : 192.168.114.128
+
+Listening TCP sockets : 6
+Bound UDP sockets     : 6
+
+Protocol Local Address              Port     Exposure
+-------- -------------              ----     --------
+TCP      0.0.0.0                    22       ALL INTERFACES
+TCP      127.0.0.1                  631      LOCAL ONLY
+TCP      127.0.0.54                 53       LOCAL ONLY
+TCP      127.0.0.53%lo              53       LOCAL ONLY
+TCP      [::]                       22       ALL INTERFACES
+TCP      [::1]                      631      LOCAL ONLY
+
+[INFO] 2 TCP listener(s) are bound to non-loopback interfaces
+[INFO] TCP port 22 is listening; commonly associated with SSH
+[PASS] No common insecure legacy TCP ports detected
+[PASS] No monitored database/data-service ports are bound to all interfaces
+
+[SERVICES & PROCESSES]
+
+Running systemd services : 33
+Enabled service units    : 58
+Failed services          : 0
+[PASS] No failed systemd services detected
+
+Running services:
+  - accounts-daemon.service
+  - avahi-daemon.service
+  - colord.service
+  - cron.service
+  - cups-browsed.service
+  - cups.service
+  - dbus.service
+  - fwupd.service
+  - gdm.service
+  - gnome-remote-desktop.service
+  - kerneloops.service
+  - ModemManager.service
+  - NetworkManager.service
+  - open-vm-tools.service
+  - polkit.service
+  - power-profiles-daemon.service
+  - rsyslog.service
+  - rtkit-daemon.service
+  - snapd.service
+  - ssh.service
+  - switcheroo-control.service
+  - systemd-journald.service
+  - systemd-logind.service
+  - systemd-oomd.service
+  - systemd-resolved.service
+  - systemd-timesyncd.service
+  - systemd-udevd.service
+  - udisks2.service
+  - unattended-upgrades.service
+  - upower.service
+  - user@1000.service
+  - vgauth.service
+  - wpa_supplicant.service
+
+[INFO] SSH service is active
+[INFO] SSH service is enabled at boot
+[PASS] No monitored insecure legacy services detected
+
+Running processes      : 325
+Root-owned processes   : 231
+[INFO] Root-owned processes require context; their presence alone is not a security issue
+
+[FIREWALL SECURITY]
+
+Firewall tool : UFW
+Status        : Requires elevated privileges
+
+[INFO] Full firewall inspection skipped because the auditor is not running as root
+[INFO] Run with sudo for the complete firewall audit
+
+[SSH SECURITY]
+
+SSH server           	: Installed
+SSH service              	: Active
+
+[INFO] Full SSH configuration audit skipped because the auditor is not running as root
+[INFO] Run with sudo for the complete SSH audit
+
+[AUTHENTICATION SECURITY]
+
+Analysis window        : Last 24 hours
+[INFO] Authentication log analysis skipped because the auditor is not running as root
+[INFO] Run with sudo for the complete authentication audit
+
+[FILE PERMISSION SECURITY]
+
+Critical file metadata:
+  /etc/passwd -> mode=644 owner=root group=root permissions=-rw-r--r--
+  /etc/shadow -> mode=640 owner=root group=shadow permissions=-rw-r-----
+  /etc/sudoers -> mode=440 owner=root group=root permissions=-r--r-----
+  /etc/ssh/sshd_config -> mode=644 owner=root group=root permissions=-rw-r--r--
+
+[PASS] /etc/passwd is not world-writable
+[PASS] /etc/passwd is owned by root
+[PASS] /etc/shadow is owned by root
+[PASS] /etc/shadow is not readable by other users
+[PASS] /etc/shadow is not world-writable
+[PASS] /etc/sudoers is owned by root
+[PASS] /etc/sudoers is not writable by group or others
+[PASS] SSH server configuration is owned by root
+[PASS] SSH server configuration is not writable by group or others
+
+[INFO] System-wide writable-file scan skipped because the auditor is not running as root
+[INFO] Run with sudo for the complete file-permission audit
+
+[SUID & SGID SECURITY]
+
+[INFO] Complete SUID/SGID discovery skipped because the auditor is not running as root
+[INFO] Run with sudo for the complete privileged-file audit
+
+[DISK & STORAGE SECURITY]
+
+Filesystem usage:
+  /dev/sda2                    20463184K  62% mounted on /
+  /dev/sr1                     6499628K 100% mounted on /media/smprj9434/Ubuntu 24.04.4 LTS amd64
+[CRITICAL] Filesystem is critically full
+  /dev/sr0                     101874K  100% mounted on /media/smprj9434/CDROM
+[CRITICAL] Filesystem is critically full
+
+[CRITICAL] 2 filesystem(s) are at or above 95% usage
+[INFO] Root filesystem usage: 62%
+
+Inode usage:
+  /dev/sda2                     14% mounted on /
+
+[PASS] No monitored filesystem has high inode usage
+
+Root filesystem mount:
+  /dev/sda2 ext4   rw,relatime
+
+[INFO] /tmp is not a separate filesystem
+[INFO] /tmp backing mount: /      /dev/sda2 ext4   rw,relatime
+
+[SECURITY UPDATES & PATCH STATUS]
+
+Pending package updates  : 94
+Security-related updates : 0
+
+[WARNING] 94 package update(s) are pending
+[PASS] No security-related updates were identified in cached APT metadata
+
+[INFO] Update results depend on locally cached APT repository metadata
+[INFO] Run 'sudo apt update' before the audit when current repository data is required
+
+Reboot required          : No
+[PASS] No reboot is currently required
+
+[INFO] unattended-upgrades package is installed
+[INFO] apt-daily-upgrade.timer is enabled
+
+==================================================
+                 AUDIT SUMMARY
+==================================================
+
+Total Audit Results: 48
+
+PASS 	             : 19
+WARNING 	     : 1
+CRITICAL 	     : 3
+INFO 	             : 25
+
+Warning Penalty    : -4
+Critical Peanlty   : -36
+Total Penalty      : -
+
+SECURITY SCORE      : 60/100
+RATING              : NEEDS IMPROVEMENT
+AUDIT MODE          : PARTIAL
+
+[INFO] This was a partial security audit.
+[INFO] Run the auditor with sudo for checks that require elevated privileges.
+
+[INFO] The security score is a heuristic assessment based on checks performed by this auditor.
+
+============================================================
+
+============================================================
+                 REMEDIATION RECOMMENDATIONS
+============================================================
+
+[PASS] No remediation recommendations were generated.
+============================================================

@@ -29,7 +29,7 @@ SECURITY_SCORE=100
 SECURITY_RATING=""
 
 RECOMMENDATIONS=()
-REPORT_DIR="./reports"
+REPORT_DIR="$SCRIPT_DIR/reports"
 REPORT_TIMESTAMP="$(date '+%Y-%m-%d_%H%M%S')"
 REPORT_HOSTNAME="$(hostname 2>/dev/null || echo unknown-host)"
 REPORT_FILE=""
