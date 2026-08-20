@@ -1,2 +1,24 @@
-reports/
+# Generated audit reports
+reports/*
+!reports/.gitkeep
+
+# Runtime logs
+logs/*
+!logs/.gitkeep
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Backup files
+*.bak
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
 
